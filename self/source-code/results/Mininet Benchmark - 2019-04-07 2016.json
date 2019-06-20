@@ -1,0 +1,167 @@
+{
+  "default_no_limit": {
+    "worst_case": [
+      [
+        "8.06 Mbits/sec",
+        "8.88 Mbits/sec"
+      ],
+      [
+        "5.67 Mbits/sec",
+        "6.48 Mbits/sec"
+      ],
+      [
+        "6.40 Mbits/sec",
+        "6.68 Mbits/sec"
+      ]
+    ],
+    "multipath_load_balance": {
+      "1": {
+        "tx": 64,
+        "rx": 64
+      },
+      "2": {
+        "tx": 36,
+        "rx": 36
+      }
+    },
+    "speed_increase": 1.1,
+    "multipath": [
+      [
+        "8.42 Mbits/sec",
+        "9.03 Mbits/sec"
+      ],
+      [
+        "6.64 Mbits/sec",
+        "7.05 Mbits/sec"
+      ],
+      [
+        "7.37 Mbits/sec",
+        "8.14 Mbits/sec"
+      ]
+    ],
+    "best_case": [
+      [
+        "5.37 Mbits/sec",
+        "6.19 Mbits/sec"
+      ],
+      [
+        "6.62 Mbits/sec",
+        "7.14 Mbits/sec"
+      ],
+      [
+        "5.55 Mbits/sec",
+        "6.27 Mbits/sec"
+      ]
+    ]
+  },
+  "default": {
+    "worst_case": [
+      [
+        "5.65 Mbits/sec",
+        "10.6 Mbits/sec"
+      ],
+      [
+        "6.11 Mbits/sec",
+        "9.57 Mbits/sec"
+      ],
+      [
+        "5.99 Mbits/sec",
+        "11.4 Mbits/sec"
+      ]
+    ],
+    "multipath_load_balance": {
+      "1": {
+        "tx": 69,
+        "rx": 69
+      },
+      "2": {
+        "tx": 31,
+        "rx": 31
+      }
+    },
+    "speed_increase": 1.57,
+    "multipath": [
+      [
+        "13.2 Mbits/sec",
+        "19.4 Mbits/sec"
+      ],
+      [
+        "5.96 Mbits/sec",
+        "12.7 Mbits/sec"
+      ],
+      [
+        "11.9 Mbits/sec",
+        "18.9 Mbits/sec"
+      ]
+    ],
+    "best_case": [
+      [
+        "4.67 Mbits/sec",
+        "11.1 Mbits/sec"
+      ],
+      [
+        "5.55 Mbits/sec",
+        "10.4 Mbits/sec"
+      ],
+      [
+        "6.25 Mbits/sec",
+        "11.0 Mbits/sec"
+      ]
+    ]
+  },
+  "data_centre": {
+    "worst_case": [
+      [
+        "5.60 Mbits/sec",
+        "12.3 Mbits/sec"
+      ],
+      [
+        "5.35 Mbits/sec",
+        "12.1 Mbits/sec"
+      ],
+      [
+        "7.03 Mbits/sec",
+        "13.6 Mbits/sec"
+      ]
+    ],
+    "multipath_load_balance": {
+      "1": {
+        "tx": 50,
+        "rx": 50
+      },
+      "2": {
+        "tx": 50,
+        "rx": 50
+      }
+    },
+    "speed_increase": 1.5,
+    "multipath": [
+      [
+        "10.3 Mbits/sec",
+        "15.0 Mbits/sec"
+      ],
+      [
+        "14.7 Mbits/sec",
+        "21.2 Mbits/sec"
+      ],
+      [
+        "15.5 Mbits/sec",
+        "20.9 Mbits/sec"
+      ]
+    ],
+    "best_case": [
+      [
+        "5.10 Mbits/sec",
+        "10.5 Mbits/sec"
+      ],
+      [
+        "4.42 Mbits/sec",
+        "10.7 Mbits/sec"
+      ],
+      [
+        "4.47 Mbits/sec",
+        "10.8 Mbits/sec"
+      ]
+    ]
+  }
+}
