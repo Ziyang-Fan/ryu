@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# test install all node in the path
+# test install match priority and path cost , one to one.
+
+# assume host 10.0.0.1 has highest, 10.0.0.2 is second , 10.0.0.3 is lowest
 
 
 from ryu.base import app_manager
@@ -32,11 +34,10 @@ from collections import defaultdict
 import random
 import time
 
-REFERENCE_BW = 10000000
 
 DEFAULT_BW = 10000000
 
-MAX_PATHS = 2
+MAX_NUM_PATHS = 3
 
 
 class ExampleSwitch13(app_manager.RyuApp):
@@ -231,42 +232,37 @@ class ExampleSwitch13(app_manager.RyuApp):
         except KeyError:
             pass
 
-    def get_paths(self, src, dst):
-        all_paths = []
-        all_paths = list(nx.node_disjoint_paths(self.net, src, dst))
-        # print all_paths
-        if len(all_paths) > 1:
-            return all_paths
-        else:
-            all_paths = list(nx.shortest_simple_paths(self.net, src, dst))
-        return all_paths
-
-    def get_path_cost(self, path):
+    def get_each_path_cost(self, path):
         """
         Get the path cost
         """
-        cost = 0
+        path_cost = 0
         for i in range(len(path) - 1):
-            p1 = path[i]
-            p2 = path[i + 1]
-            e1 = self.switch_topo[p1][p2]
-            e2 = self.switch_topo[p2][p1]
-            bl = min(self.bandwidths[p1][e1], self.bandwidths[p2][e2])
-            link_cost = REFERENCE_BW / bl
-            cost += link_cost
-        return cost
+            switch1 = path[i]
+            switch2 = path[i + 1]
+            port1 = self.switch_topo[switch1][switch2]
+            port2 = self.switch_topo[switch2][switch1]
+            link_bandwidth = min(self.bandwidths[switch1][port1],
+                                 self.bandwidths[switch2][port2])
+            link_cost = DEFAULT_BW / link_bandwidth
+            path_cost += link_cost
+        return path_cost
 
     # return the one or two least cost paths [[5, 4, 3, 1], [5, 2, 1]]
-    def get_optimal_paths(self, src, dst):
+    def get_optimal_num_paths(self, src, dst):
         """
         Get the n-most optimal paths according to MAX_PATHS
         """
-        paths = self.get_paths(src, dst)
-        paths_count = len(paths) if len(
-            paths) < MAX_PATHS else MAX_PATHS
+        all_paths = []
+        # get all available path between src and dst
+        all_paths = list(nx.shortest_simple_paths(self.net, src, dst))
+
+        counter = len(all_paths) if len(
+            all_paths) < MAX_NUM_PATHS else MAX_NUM_PATHS
         # return the two least cost paths [[5, 4, 3, 1], [5, 2, 1]]
-        return sorted(paths,
-                      key=lambda x: self.get_path_cost(x))[0:paths_count]
+        paths = sorted(all_paths,
+                       key=lambda x: self.get_each_path_cost(x))[0:counter]
+        return paths
 
     def add_ports_to_paths(self, paths, last_port):
         """
@@ -284,115 +280,118 @@ class ExampleSwitch13(app_manager.RyuApp):
             paths_p.append(p)
         return paths_p
 
-    def generate_openflow_gid(self):
+    def set_group_id(self):
         """
         Returns a random OpenFlow group id
         """
-        n = random.randint(0, 2 ** 32)
-        while n in self.group_ids:
-            n = random.randint(0, 2 ** 32)
-        self.group_ids.append(n)
-        return n
+        group_id = random.randint(0, 4294967296)
+        while group_id in self.group_ids:
+            group_id = random.randint(0, 4294967296)
+        self.group_ids.append(group_id)
+        return group_id
 
     def install_paths(self, src_dpid, dst_dpid, last_port, ip_src, ip_dst):
-        paths = self.get_optimal_paths(src_dpid, dst_dpid)
-        pw = []
+        paths = self.get_optimal_num_paths(src_dpid, dst_dpid)
+        # move to packet-handler
+        path_weight = []
         for path in paths:
-            pw.append(self.get_path_cost(path))
-            # print path, "cost = ", pw[len(pw) - 1]
-        sum_of_pw = sum(pw) * 1.0
+            path_weight.append(self.get_each_path_cost(path))
+            # print path, "cost = ", path_weight[len(path_weight) - 1]
+        sum_path_weight = sum(path_weight) * 1.0
         paths_with_ports = self.add_ports_to_paths(paths, last_port)
-        # [{1: 3, 3: 2, 5: 3}, {1: 2, 2: 2, 4: 2, 5: 3}] [{dpid: outport,  }, ]
+        # [{1: 3, 3: 2, 5: 3},{1: 2, 2: 2, 4: 2, 5: 3}] [{dp_id: out_port, }, ]
 
-        switches_in_paths = set().union(*paths)
+        for each_path in paths:
+            j = 0  # match_key
+            for switch in each_path:
 
-        j = 0  # match_key
-        for switch in switches_in_paths:
+                dp = self.datapath_list[switch]
+                ofp = dp.ofproto
+                ofp_parser = dp.ofproto_parser
 
-            dp = self.datapath_list[switch]
-            ofp = dp.ofproto
-            ofp_parser = dp.ofproto_parser
+                ports = defaultdict(list)
+                # ports[j --- (match_key)] = [(out_port, weight), ..]
+                # default_dict(<type 'list'>, {0: [(3, 2)], 1: [(2, 3)]})
 
-            ports = defaultdict(list)
-            # ports[j --- (match_key)] = [(out_port, weight), ..]
-            # defaultdict(<type 'list'>, {0: [(3, 2)], 1: [(2, 3)]})
+                actions = []
+                i = 0
+                # path  {1: 3, 3: 2, 5: 3}  {dp_id: out_port, dp_id: out_port, }
+                for path in paths_with_ports:
+                    if switch in path:
+                        out_port = path[switch]
+                        port_cost = (out_port, path_weight[i])
+                        if (out_port, path_weight[i]) not in ports[j]:
+                            ports[j].append(port_cost)
+                    i += 1
 
-            actions = []
-            i = 0
-            # path  {1: (1, 3), 3: (1, 2), 5: (1, 3)},
-            for path in paths_with_ports:
-                if switch in path:
-                    out_port = path[switch]
-                    port_cost = (out_port, pw[i])
-                    if (out_port, pw[i]) not in ports[j]:
-                        ports[j].append(port_cost)
-                i += 1
+                j += 1
 
-            j += 1
+                for match_key in ports:
+                    match_ip = ofp_parser.OFPMatch(
+                        eth_type=0x0800,
+                        ipv4_src=ip_src,
+                        ipv4_dst=ip_dst
+                    )
+                    match_arp = ofp_parser.OFPMatch(
+                        eth_type=0x0806,
+                        arp_spa=ip_src,
+                        arp_tpa=ip_dst
+                    )
 
-            for match_key in ports:
-                match_ip = ofp_parser.OFPMatch(
-                    eth_type=0x0800,
-                    ipv4_src=ip_src,
-                    ipv4_dst=ip_dst
-                )
-                match_arp = ofp_parser.OFPMatch(
-                    eth_type=0x0806,
-                    arp_spa=ip_src,
-                    arp_tpa=ip_dst
-                )
+                    out_ports = ports[match_key]
+                    # print out_ports
 
-                out_ports = ports[match_key]
-                # print out_ports
+                    if len(out_ports) > 1:
+                        print out_ports
+                        group_id = None
+                        group_new = False
 
-                if len(out_ports) > 1:
-                    print out_ports
-                    group_id = None
-                    group_new = False
+                        if (
+                        switch, src_dpid, dst_dpid) not in self.multipath_ids:
+                            group_new = True
+                            self.multipath_ids[switch, src_dpid, dst_dpid] \
+                                = self.set_group_id()
+                        group_id = self.multipath_ids[
+                            switch, src_dpid, dst_dpid]
 
-                    if (switch, src_dpid, dst_dpid) not in self.multipath_ids:
-                        group_new = True
-                        self.multipath_ids[switch, src_dpid, dst_dpid] \
-                            = self.generate_openflow_gid()
-                    group_id = self.multipath_ids[switch, src_dpid, dst_dpid]
-
-                    buckets = []
-                    # print "node at ",node," out ports : ",out_ports
-                    for port, weight in out_ports:
-                        bucket_weight = int(
-                            round((1 - weight / sum_of_pw) * 10))
-                        bucket_action = [ofp_parser.OFPActionOutput(port)]
-                        buckets.append(
-                            ofp_parser.OFPBucket(
-                                weight=bucket_weight,
-                                watch_port=port,
-                                watch_group=ofp.OFPG_ANY,
-                                actions=bucket_action
+                        buckets = []
+                        # print "node at ",node," out ports : ",out_ports
+                        for port, weight in out_ports:
+                            bucket_weight = int(
+                                round((1 - weight / sum_path_weight) * 10))
+                            bucket_action = [ofp_parser.OFPActionOutput(port)]
+                            buckets.append(
+                                ofp_parser.OFPBucket(
+                                    weight=bucket_weight,
+                                    watch_port=port,
+                                    watch_group=ofp.OFPG_ANY,
+                                    actions=bucket_action
+                                )
                             )
-                        )
 
-                    if group_new:
-                        req = ofp_parser.OFPGroupMod(
-                            dp, ofp.OFPGC_ADD, ofp.OFPGT_SELECT, group_id,
-                            buckets
-                        )
-                        dp.send_msg(req)
-                    else:
-                        req = ofp_parser.OFPGroupMod(
-                            dp, ofp.OFPGC_MODIFY, ofp.OFPGT_SELECT,
-                            group_id, buckets)
-                        dp.send_msg(req)
+                        if group_new:
+                            req = ofp_parser.OFPGroupMod(
+                                dp, ofp.OFPGC_ADD, ofp.OFPGT_SELECT, group_id,
+                                buckets
+                            )
+                            dp.send_msg(req)
+                        else:
+                            req = ofp_parser.OFPGroupMod(
+                                dp, ofp.OFPGC_MODIFY, ofp.OFPGT_SELECT,
+                                group_id, buckets)
+                            dp.send_msg(req)
 
-                    actions = [ofp_parser.OFPActionGroup(group_id)]
+                        actions = [ofp_parser.OFPActionGroup(group_id)]
 
-                    self.add_flow(dp, 32768, match_ip, actions)
-                    self.add_flow(dp, 1, match_arp, actions)
+                        self.add_flow(dp, 32768, match_ip, actions)
+                        self.add_flow(dp, 1, match_arp, actions)
 
-                elif len(out_ports) == 1:
-                    actions = [ofp_parser.OFPActionOutput(out_ports[0][0])]
+                    elif len(out_ports) == 1:
+                        actions = [ofp_parser.OFPActionOutput(out_ports[0][0])]
 
-                    self.add_flow(dp, 32768, match_ip, actions)
-                    self.add_flow(dp, 1, match_arp, actions)
+                        self.add_flow(dp, 32768, match_ip, actions)
+                        self.add_flow(dp, 1, match_arp, actions)
+
         return paths_with_ports[0][src_dpid]
 
     @set_ev_cls(ofp_event.EventOFPPortDescStatsReply, MAIN_DISPATCHER)
